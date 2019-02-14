@@ -343,11 +343,7 @@ class RoutingCache : public RoutingModel::NodeEvaluator2 {
   // directly, but through RoutingModel::NewCachedCallback that ensures that the
   // base callback is deleted properly.
   RoutingCache(RoutingModel::NodeEvaluator2* callback, int size)
-      : cached_(size), cache_(size), callback_(CHECK_NOTNULL(callback)) {
-    for (RoutingModel::NodeIndex i(0); i < RoutingModel::NodeIndex(size); ++i) {
-      cached_[i].resize(size, false);
-      cache_[i].resize(size, 0);
-    }
+      : callback_(CHECK_NOTNULL(callback)) {
     CHECK(callback->IsRepeatable());
   }
   bool IsRepeatable() const override { return true; }
@@ -357,21 +353,10 @@ class RoutingCache : public RoutingModel::NodeEvaluator2 {
     // returns previous result if so, or runs underlaying callback and
     // stores its result.
     // Not MT-safe.
-    if (cached_[i][j]) {
-      return cache_[i][j];
-    } else {
-      const int64 cached_value = callback_->Run(i, j);
-      cached_[i][j] = true;
-      cache_[i][j] = cached_value;
-      return cached_value;
-    }
+    return callback_->Run(i, j);
   }
 
  private:
-  gtl::ITIVector<RoutingModel::NodeIndex, gtl::ITIVector<RoutingModel::NodeIndex, bool>>
-      cached_;
-  gtl::ITIVector<RoutingModel::NodeIndex, gtl::ITIVector<RoutingModel::NodeIndex, int64>>
-      cache_;
   RoutingModel::NodeEvaluator2* const callback_;
 };
 
@@ -386,40 +371,17 @@ class StateDependentRoutingCache : public RoutingModel::VariableNodeEvaluator2 {
   // ensures that the base callback is deleted properly.
   StateDependentRoutingCache(RoutingModel::VariableNodeEvaluator2* callback,
                              int size)
-      : cache_(size), callback_(CHECK_NOTNULL(callback)) {
-    for (RoutingModel::NodeIndex i(0); i < RoutingModel::NodeIndex(size); ++i) {
-      cache_[i].resize(size, {nullptr, nullptr});
-    }
+      : callback_(CHECK_NOTNULL(callback)) {
     CHECK(callback->IsRepeatable());
-  }
-  ~StateDependentRoutingCache() override {
-    std::unordered_set<RangeIntToIntFunction*> value_functions_delete;
-    std::unordered_set<RangeMinMaxIndexFunction*> index_functions_delete;
-    for (const auto& cache_line : cache_) {
-      for (const RoutingModel::StateDependentTransit& transit : cache_line) {
-        value_functions_delete.insert(transit.transit);
-        index_functions_delete.insert(transit.transit_plus_identity);
-      }
-    }
-    gtl::STLDeleteElements(&value_functions_delete);
-    gtl::STLDeleteElements(&index_functions_delete);
   }
   bool IsRepeatable() const override { return true; }
   // This method returns cached results of the callback.
   RoutingModel::StateDependentTransit Run(RoutingModel::NodeIndex i,
                                           RoutingModel::NodeIndex j) override {
-    RoutingModel::StateDependentTransit& cache_cell = cache_[i][j];
-    if (cache_cell.transit == nullptr) {
-      cache_cell = callback_->Run(i, j);
-    }
-    return cache_cell;
+    return callback_->Run(i, j);
   }
 
  private:
-  gtl::ITIVector<
-      RoutingModel::NodeIndex,
-      gtl::ITIVector<RoutingModel::NodeIndex, RoutingModel::StateDependentTransit>>
-      cache_;
   RoutingModel::VariableNodeEvaluator2* const callback_;
 };
 
